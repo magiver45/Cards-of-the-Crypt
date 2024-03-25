@@ -42,7 +42,7 @@ class Camera:
             return glm.vec3(0, 0, 0)  # Return a zero vector if direction is 0
 
     def rotate_left(self):
-        rotation_amount = glm.radians(self.rotation_speed)
+        rotation_amount = glm.radians(-self.rotation_speed)
         self.target = glm.rotate(self.target, rotation_amount, self.up)
         self.calculate_sides()
 
@@ -116,26 +116,28 @@ class Texture:
         try:
             image = Image.open(image_path)
             image_data = np.array(list(image.getdata()), np.uint8)  # Convert to NumPy format
+
+            texture = glGenTextures(1)
+            glBindTexture(GL_TEXTURE_2D, texture)
+            print("Texture ID:", texture)
+
+            # Set texture parameters
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT)
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT) 
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR) 
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR) 
+
+            # Load the image data into the texture
+            glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, image.width, image.height, 0, GL_RGB, GL_UNSIGNED_BYTE, image_data) 
+
+            return texture 
+        
         except (FileNotFoundError, AttributeError):  # Error handling if image isn't found
             print(f"Error loading texture: {image_path}")
-            return 
-
-        texture = glGenTextures(1)
-        glBindTexture(GL_TEXTURE_2D, texture)
-
-        # Set texture parameters
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT)
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT) 
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR) 
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR) 
-
-        # Load the image data into the texture
-        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, image.width, image.height, 0, GL_RGB, GL_UNSIGNED_BYTE, image_data) 
-
-        return texture 
+            return None  # Return None on error
 
     def bind(self):
-        glBindTexture(GL_TEXTURE_2D, self.texture_id)
+        glBindTexture(GL_TEXTURE_2D, self.texture_id)  # Bind the correct texture
 
 class Tile:
     def __init__(self, texture, is_wall=False):
@@ -147,7 +149,7 @@ class DungeonRoom:
         self.width = width
         self.height = height
         self.tiles = [[Tile(None) for _ in range(width)] for _ in range(height)]  # Placeholder tiles
-        self.generate_room(wall_texture,floor_texture)  # Generate the room layout
+        self.generate_room(wall_texture, floor_texture)  # Generate the room layout
 
     def generate_room(self, wall_texture, floor_texture):
         # Basic Room Generation (replace this with your desired algorithm) 
@@ -159,26 +161,6 @@ class DungeonRoom:
                 else:
                     self.tiles[y][x].texture = floor_texture
 
-class Player:
-    def __init__(self, position):
-        self.position = position
-        self.health = 100
-        #self.texture = Texture("player.png")
-        self.rotation = 0  # Current rotation in degrees
-        self.target_rotation = 0  # Target rotation to rotate towards
-
-    def update(self, delta_time): 
-        # ... other player update logic
-        smooth_speed = 0.5 # Adjust as needed
-        t = clamp(smooth_speed * delta_time, 0.0, 1.0)  
-        self.rotation = glm.mix(self.rotation, self.target_rotation, t)
-
-class Enemy:
-    def __init__(self, position):
-        self.position = position
-        self.health = 50
-        #self.texture = Texture("enemy.png")
-
 # --- Initialization ---
 def init_game():
     pygame.init()
@@ -187,50 +169,103 @@ def init_game():
     # Request a core profile context  
     pygame.display.gl_set_attribute(pygame.GL_CONTEXT_PROFILE_MASK, pygame.GL_CONTEXT_PROFILE_CORE)
     pygame.display.set_mode(display, DOUBLEBUF|OPENGL)
-    #glEnable(GL_DEPTH_TEST) 
+    glEnable(GL_DEPTH_TEST) 
+    glDepthFunc(GL_LEQUAL)
     print(glGetString(GL_VERSION))
 
+    #VERTICES
+    vertices = np.array([
+    # Front face 
+    -0.5, -0.5,  0.5, 0.0, 0.0, # Bottom-left
+     0.5, -0.5,  0.5, 1.0, 0.0, # Bottom-right 
+     0.5,  0.5,  0.5, 1.0, 1.0, # Top-right
+    -0.5,  0.5,  0.5, 0.0, 1.0, # Top-left
+
+    # Back face
+    -0.5, -0.5, -0.5, 0.0, 0.0,  
+     0.5, -0.5, -0.5, 1.0, 0.0,  
+     0.5,  0.5, -0.5, 1.0, 1.0,  
+    -0.5,  0.5, -0.5, 0.0, 1.0,  
+
+    # Left face
+    -0.5, -0.5, -0.5, 0.0, 0.0, 
+    -0.5,  0.5, -0.5, 1.0, 0.0, 
+    -0.5,  0.5,  0.5, 1.0, 1.0, 
+    -0.5, -0.5,  0.5, 0.0, 1.0,
+
+    # Right face
+     0.5, -0.5,  0.5, 0.0, 0.0, 
+     0.5,  0.5,  0.5, 1.0, 0.0, 
+     0.5,  0.5, -0.5, 1.0, 1.0, 
+     0.5, -0.5, -0.5, 0.0, 1.0,
+
+    # Top face
+    -0.5,  0.5,  0.5, 0.0, 0.0, 
+     0.5,  0.5,  0.5, 1.0, 0.0,
+     0.5,  0.5, -0.5, 1.0, 1.0,
+    -0.5,  0.5, -0.5, 0.0, 1.0,
+
+    # Bottom face
+    -0.5, -0.5, -0.5, 0.0, 0.0, 
+     0.5, -0.5, -0.5, 1.0, 0.0,
+     0.5, -0.5,  0.5, 1.0, 1.0,
+    -0.5, -0.5,  0.5, 0.0, 1.0,
+    ], dtype=np.float32)
+
+    # VBO setup
+    print("Configuring VBO...")
+    vbo = glGenBuffers(1)
+    glBindBuffer(GL_ARRAY_BUFFER, vbo) 
+    glBufferData(GL_ARRAY_BUFFER, vertices.nbytes, vertices, GL_STATIC_DRAW)
+    glEnableVertexAttribArray(0)  # Position
+    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 5 * vertices.itemsize, None)  
+    glEnableVertexAttribArray(1)  # Texture coords
+    glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 5 * vertices.itemsize, ctypes.c_void_p(3 * vertices.itemsize)) 
+    print("VBO configured!")
+
+    #SHADERS
     print("Creating shader...")
     vertex_shader_source = Shader.read_file("vertex_shader.vs")
     fragment_shader_source = Shader.read_file("fragment_shader.frag")
     shader = Shader(vertex_shader_source, fragment_shader_source)
-    print("Shader created:", shader)
-    
+    print("Shader created:", shader) 
 
-    print("Loading textures...")  
+    #TEXTURES
+    print("Loading textures...")
+    # Wall 
     wall_texture = Texture("wall_texture.png")
+    if wall_texture is None:
+        print("No Wall Texture!'")
+
+    # Floor
     floor_texture = Texture("floor_texture.png")
+    if floor_texture is None:
+        print("No Floor Texture!")
+
     # ... load player, enemy textures ...
     print("Textures loaded.") 
 
+    #CAMERA
     print("Creating camera...")
-    camera = Camera(glm.vec3(0, 0, 3))
+    camera = Camera(glm.vec3(2, 2, 2))
     print("Camera created:", camera)
     print("Camera Position:", camera.position)
     print("Camera Target:", camera.target)
 
+    #ROOM
     print("Generating room...") 
     room = DungeonRoom(10, 10, wall_texture, floor_texture)
     print("Room generated.") 
 
-    print("Creating player...")
-    player = Player(glm.vec3(5, 5, 0)) 
-    print("Player created:", player)
-
-    enemies = [Enemy(glm.vec3(2, 2, 0))] 
-
-    return shader, camera, room, player, enemies
+    return shader, camera, room
 
 # --- Game Loop Functions ---
-def handle_input(camera,player):
+def handle_input(camera):
     keys = pygame.key.get_pressed()
-
     movement_speed = 1 * camera.grid_size
-    rotation_speed = 5
 
     if keys[K_w]:  # Forward
         camera.target_position += camera.target * movement_speed
-        player.position += camera.target * movement_speed  # Move player forward
         camera.target_position = glm.vec3(  
             round(camera.target_position.x / camera.grid_size) * camera.grid_size,
             round(camera.target_position.y / camera.grid_size) * camera.grid_size,
@@ -242,7 +277,6 @@ def handle_input(camera,player):
 
     if keys[K_s]:  # Backward
         camera.target_position -= camera.target * movement_speed  # Subtract for backward movement
-        player.position -= camera.target * movement_speed  # Move player backward
         camera.target_position = glm.vec3(
             round(camera.target_position.x / camera.grid_size) * camera.grid_size,
             round(camera.target_position.y / camera.grid_size) * camera.grid_size,
@@ -253,7 +287,6 @@ def handle_input(camera,player):
 
     if keys[K_a]:  # Left
         camera.target_position -= glm.cross(camera.target, camera.up) * movement_speed  # Use cross product for strafing
-        player.position -= camera.strafe(1) * movement_speed  # Move player left
         camera.target_position = glm.vec3(
             round(camera.target_position.x / camera.grid_size) * camera.grid_size,
             round(camera.target_position.y / camera.grid_size) * camera.grid_size,
@@ -264,7 +297,6 @@ def handle_input(camera,player):
 
     if keys[K_d]:  # Right
         camera.target_position += glm.cross(camera.target, camera.up) * movement_speed  # Opposite direction for right movement
-        player.position += camera.strafe(1) * movement_speed  # Move player right
         camera.target_position = glm.vec3(
             round(camera.target_position.x / camera.grid_size) * camera.grid_size,
             round(camera.target_position.y / camera.grid_size) * camera.grid_size,
@@ -275,36 +307,20 @@ def handle_input(camera,player):
 
     if keys[K_q]:  # Turn left
         camera.rotate_left()
-        player.target_rotation -= rotation_speed
 
         print("Camera Position:", camera.position)
         print("Camera Target:", camera.target)
     if keys[K_e]:  # Turn right
         camera.rotate_right()
-        player.target_rotation += rotation_speed
 
         print("Camera Position:", camera.position)
         print("Camera Target:", camera.target)
 
-def clamp(value, min_value, max_value):
-    return max(min_value, min(value, max_value))
+def update(camera):
+    handle_input(camera)
 
-def update(delta_time, camera, player, enemies):
-    handle_input(camera, player)
-
-    smooth_speed = 0.5 
-    t = clamp(smooth_speed * delta_time, 0.0, 1.0)  
-    camera.position = glm.mix(camera.position, camera.target_position, glm.smoothstep(0.0, 1.0, t))
-    
-    player.update(delta_time) # Update the player
-
-    # Very basic enemy movement 
-    for enemy in enemies:
-        enemy.position += glm.vec3(0.05 * GRID_SIZE, 0, 0)  
-
-    # ... (Other game logic: camera updates, collision detection, AI) ...
-
-def draw(shader, camera, room, player, enemies):
+'''def draw(shader, camera, room):
+    glClearColor(0.2, 0.3, 0.3, 1.0)
     glClear(GL_COLOR_BUFFER_BIT|GL_DEPTH_BUFFER_BIT)
     shader.use() 
 
@@ -336,39 +352,37 @@ def draw(shader, camera, room, player, enemies):
             tile.texture.bind()
             glDrawArrays(GL_QUADS, 0, 4)  # Assuming a quad represents a tile
 
-    # --- Render the Player ---
-    model_matrix = glm.translate(glm.mat4(1.0), player.position) * glm.rotate(glm.mat4(1.0), player.rotation, glm.vec3(0, 1, 0))
+    pygame.display.flip()'''
 
-    model_location = glGetUniformLocation(shader.program, "model") 
-    glUniformMatrix4fv(model_location, 1, GL_FALSE, glm.value_ptr(model_matrix)) 
-    #player.texture.bind() 
-    glDrawArrays(GL_QUADS, 0, 4)  # Assuming a quad represents the player
+def draw(shader, camera, room):
+    glClearColor(0.2, 0.3, 0.3, 1.0)
+    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT)
+    shader.use()
 
-    # --- Render Enemies (similar to rendering the player )---
-    for enemy in enemies:
-        model_matrix = glm.translate(glm.mat4(1.0), enemy.position)
-        glUniformMatrix4fv(model_location, 1, GL_FALSE, glm.value_ptr(model_matrix)) 
-        #enemy.texture.bind()
-        glDrawArrays(GL_QUADS, 0, 4)  # Assuming a quad represents an enemy
+    # --- Temporary: Rendering a single red quad ---
+    model_matrix = glm.mat4(1.0)  # Identity matrix (no transformations)
+    view_matrix = camera.get_view_matrix()
+    projection_matrix = glm.perspective(glm.radians(60.0), (WIN_WIDTH / WIN_HEIGHT), 0.1, 100.0)
+
+    glUniformMatrix4fv(glGetUniformLocation(shader.program, "model"), 1, GL_FALSE, glm.value_ptr(model_matrix))
+    glUniformMatrix4fv(glGetUniformLocation(shader.program, "view"), 1, GL_FALSE, glm.value_ptr(view_matrix))
+    glUniformMatrix4fv(glGetUniformLocation(shader.program, "projection"), 1, GL_FALSE, glm.value_ptr(projection_matrix))
+
+    glDrawArrays(GL_QUADS, 0, 4)  # Assuming you have your quad vertices set up
 
     pygame.display.flip()
 
 # --- Main ---
 if __name__ == "__main__":
-    shader, camera, room, player, enemies= init_game()
-    previous_time = pygame.time.get_ticks()
-
+    shader, camera, room= init_game()
+    
     while True:  
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 pygame.quit()
                 quit()
 
-        current_time = pygame.time.get_ticks()
-        delta_time = (current_time - previous_time) / 1000.0 
-        previous_time = current_time
-
-        update(delta_time, camera, player, enemies) 
-        draw(shader, camera, room, player, enemies) 
+        update(camera) 
+        draw(shader, camera, room) 
         pygame.display.flip()  
         pygame.time.wait(10) 
