@@ -3,10 +3,12 @@
 out vec4 FragColor;
 
 in vec2 TexCoord;
-
 uniform sampler2D ourTexture; 
+uniform float tileSize; 
 
 void main()
 {
-    FragColor = texture(ourTexture, TexCoord);
+    // Calculate scaled texture coordinates
+    vec2 scaledTexCoord = TexCoord / tileSize;
+    FragColor = texture(ourTexture, scaledTexCoord); 
 }
